@@ -15,11 +15,22 @@ export interface ActiveContext {
   hasSelection: boolean;
 }
 
+export interface ToolCallEvent {
+  id: string;
+  name: string;
+  args: Record<string, any>;
+  status: 'running' | 'completed' | 'error';
+  output?: string;
+  error?: string;
+  durationMs?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
+  toolCalls?: ToolCallEvent[];
 }
 
 export interface ProviderUsage {
@@ -95,8 +106,10 @@ export type ExtensionMessage =
       sessionsList?: SessionSummary[];
     }
   | { type: 'streamToken'; token: string }
-  | { type: 'streamEnd'; fullText: string }
+  | { type: 'streamEnd'; fullText: string; toolCalls?: ToolCallEvent[] }
   | { type: 'streamError'; error: string }
+  | { type: 'toolCallStart'; toolCall: ToolCallEvent }
+  | { type: 'toolCallEnd'; toolCall: ToolCallEvent }
   | { type: 'contextUpdated'; activeContext: ActiveContext }
   | { type: 'keysStatusUpdated'; apiKeys: Record<ProviderType, boolean> }
   | { type: 'usageStatsUpdated'; usageStats: UsageStats }

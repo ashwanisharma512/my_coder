@@ -15,6 +15,7 @@ import {
   ChatSession,
   ExtensionMessage,
   ProviderType,
+  ToolCallEvent,
   WebviewMessage,
 } from '../shared/protocol';
 
@@ -320,6 +321,32 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private parseToolCalls(text: string): Array<{ name: string; args: any; raw: string }> {
+    const calls: Array<{ name: string; args: any; raw: string }> = [];
+    const regex = /<tool_call\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/tool_call>/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const raw = match[0];
+      const name = match[1];
+      let args = {};
+      try {
+        args = JSON.parse(match[2].trim());
+      } catch {
+        // Fallback for sloppy JSON
+        try {
+          const cleaned = match[2].trim().replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
+          args = JSON.parse(cleaned);
+        } catch {
+          args = { input: match[2].trim() };
+        }
+      }
+      calls.push({ name, args, raw });
+    }
+
+    return calls;
+  }
+
   private async handleSendMessage(message: {
     text: string;
     provider: ProviderType;
@@ -336,7 +363,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     }
 
     const traceId = 'req_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
-    const startTime = Date.now();
 
     // Increment and broadcast call counter
     const updatedStats = await this.usageTracker.recordApiCall(message.provider);
@@ -368,7 +394,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     this.activeSession.messages.push(userMessage);
     this.sessionManager.saveSession(this.activeSession);
 
-    // Add user message to LLM history
     this.conversationHistory.push({
       role: 'user',
       content: message.text,
@@ -379,77 +404,160 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       ...this.conversationHistory,
     ];
 
-    // Log outgoing request
-    this.logger.logOutgoingRequest(traceId, message.provider, message.model, {
-      messages: fullMessages,
-    });
+    const accumulatedToolCalls: ToolCallEvent[] = [];
+    let currentTurn = 0;
+    const maxTurns = 6;
+    let continueLoop = true;
+    let finalAssistantText = '';
 
     try {
-      await provider.streamChat(
-        fullMessages,
-        message.model,
-        apiKey,
-        {
-          onToken: (token) => {
-            this.postMessage({ type: 'streamToken', token });
-          },
-          onError: (error) => {
-            const durationMs = Date.now() - startTime;
-            this.logger.logIncomingResponse(
-              traceId,
-              message.provider,
-              message.model,
-              durationMs,
-              '',
-              error.message
-            );
-            this.postMessage({ type: 'streamError', error: error.message });
-          },
-          onFinish: (fullText) => {
-            const durationMs = Date.now() - startTime;
-            this.logger.logIncomingResponse(
-              traceId,
-              message.provider,
-              message.model,
-              durationMs,
-              fullText
-            );
-            this.conversationHistory.push({
-              role: 'assistant',
-              content: fullText,
-            });
+      while (continueLoop && currentTurn < maxTurns) {
+        currentTurn++;
+        const turnStartTime = Date.now();
 
-            if (this.activeSession) {
-              this.activeSession.messages.push({
-                id: Date.now().toString(),
-                role: 'assistant',
-                content: fullText,
-                timestamp: Date.now(),
-              });
-              this.sessionManager.saveSession(this.activeSession);
-              this.postMessage({
-                type: 'sessionsListUpdated',
-                sessions: this.sessionManager.listSessions(),
-              });
+        // Log outgoing turn
+        this.logger.logOutgoingRequest(traceId, message.provider, message.model, {
+          messages: fullMessages,
+        });
+
+        let turnAccumulated = '';
+
+        await provider.streamChat(
+          fullMessages,
+          message.model,
+          apiKey,
+          {
+            onToken: (token) => {
+              turnAccumulated += token;
+              this.postMessage({ type: 'streamToken', token });
+            },
+            onError: (error) => {
+              throw error;
+            },
+            onFinish: (fullText) => {
+              turnAccumulated = fullText;
+            },
+          },
+          {
+            abortSignal: this.currentAbortController.signal,
+          }
+        );
+
+        const durationMs = Date.now() - turnStartTime;
+        this.logger.logIncomingResponse(
+          traceId,
+          message.provider,
+          message.model,
+          durationMs,
+          turnAccumulated
+        );
+
+        finalAssistantText += (finalAssistantText ? '\n\n' : '') + turnAccumulated;
+
+        // Check if the model invoked any tools
+        const parsedTools = this.parseToolCalls(turnAccumulated);
+
+        if (parsedTools.length === 0) {
+          // Model finished its reasoning with no further tools requested
+          continueLoop = false;
+        } else {
+          // Autonomous Agent Tool Execution Loop
+          for (const call of parsedTools) {
+            if (this.currentAbortController.signal.aborted) {
+              continueLoop = false;
+              break;
             }
 
-            this.postMessage({ type: 'streamEnd', fullText });
-            this.currentAbortController = undefined;
-          },
-        },
-        {
-          abortSignal: this.currentAbortController.signal,
+            const callId = 'call_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            const toolEvent: ToolCallEvent = {
+              id: callId,
+              name: call.name,
+              args: call.args,
+              status: 'running',
+            };
+
+            accumulatedToolCalls.push(toolEvent);
+            await this.postMessage({
+              type: 'toolCallStart',
+              toolCall: toolEvent,
+            });
+
+            // Execute the tool in the workspace
+            const toolResult = await this.toolRegistry.executeTool(
+              traceId,
+              call.name,
+              call.args
+            );
+
+            toolEvent.status = toolResult.success ? 'completed' : 'error';
+            toolEvent.output = toolResult.output;
+            toolEvent.error = toolResult.error;
+
+            await this.postMessage({
+              type: 'toolCallEnd',
+              toolCall: toolEvent,
+            });
+
+            // Feed tool result back into LLM conversation
+            fullMessages.push({
+              role: 'assistant',
+              content: `I invoked tool ${call.name} with parameters: ${JSON.stringify(call.args)}`,
+            });
+
+            const resultText = toolResult.success
+              ? `[Tool Result for ${call.name}]:\n${toolResult.output}`
+              : `[Tool Error for ${call.name}]:\n${toolResult.error}`;
+
+            fullMessages.push({
+              role: 'user',
+              content: resultText,
+            });
+          }
         }
-      );
+      }
+
+      // Turn loop complete: clean up tool tags from final displayed text if desired
+      const cleanedResponse = finalAssistantText
+        .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
+        .trim();
+
+      const assistantMsgContent = cleanedResponse || finalAssistantText;
+
+      this.conversationHistory.push({
+        role: 'assistant',
+        content: assistantMsgContent,
+      });
+
+      if (this.activeSession) {
+        this.activeSession.messages.push({
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: assistantMsgContent,
+          timestamp: Date.now(),
+          toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        });
+        this.sessionManager.saveSession(this.activeSession);
+        await this.postMessage({
+          type: 'sessionsListUpdated',
+          sessions: this.sessionManager.listSessions(),
+        });
+      }
+
+      await this.postMessage({
+        type: 'streamEnd',
+        fullText: assistantMsgContent,
+        toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+      });
+
+      this.currentAbortController = undefined;
     } catch (err: any) {
       this.currentAbortController = undefined;
-      const durationMs = Date.now() - startTime;
       const errMsg = err.message || 'Unknown error occurred during generation.';
       this.logger.logIncomingResponse(
         traceId,
         message.provider,
         message.model,
-        durationMs,
+        0,
         '',
         errMsg
       );

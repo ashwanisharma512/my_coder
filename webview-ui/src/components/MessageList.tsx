@@ -1,12 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { MessageItem } from './MessageItem';
-import { ChatMessage } from '../../../src/shared/protocol';
+import { ChatMessage, ToolCallEvent } from '../../../src/shared/protocol';
 import { Sparkles, Terminal } from 'lucide-react';
 
 interface MessageListProps {
   messages: ChatMessage[];
   streamingText: string;
   isStreaming: boolean;
+  activeToolCalls?: ToolCallEvent[];
   onQuickPrompt?: (prompt: string) => void;
 }
 
@@ -14,6 +15,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages,
   streamingText,
   isStreaming,
+  activeToolCalls,
   onQuickPrompt,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,8 +77,9 @@ export const MessageList: React.FC<MessageListProps> = ({
           message={{
             id: 'streaming-active',
             role: 'assistant',
-            content: streamingText || 'Thinking...',
+            content: streamingText || (activeToolCalls && activeToolCalls.length > 0 ? '' : 'Thinking...'),
             timestamp: Date.now(),
+            toolCalls: activeToolCalls,
           }}
         />
       )}

@@ -14,6 +14,7 @@ import {
   ModelOption,
   ProviderType,
   SessionSummary,
+  ToolCallEvent,
   UsageStats,
 } from '../../src/shared/protocol';
 
@@ -61,6 +62,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [streamingText, setStreamingText] = useState<string>('');
+  const [activeToolCalls, setActiveToolCalls] = useState<ToolCallEvent[]>([]);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isUsageOpen, setIsUsageOpen] = useState<boolean>(false);
@@ -142,6 +144,22 @@ export function App() {
           break;
         }
 
+        case 'toolCallStart': {
+          setActiveToolCalls((prev) => {
+            const exists = prev.find((t) => t.id === msg.toolCall.id);
+            if (exists) return prev;
+            return [...prev, msg.toolCall];
+          });
+          break;
+        }
+
+        case 'toolCallEnd': {
+          setActiveToolCalls((prev) =>
+            prev.map((t) => (t.id === msg.toolCall.id ? msg.toolCall : t))
+          );
+          break;
+        }
+
         case 'streamEnd': {
           setMessages((prev) => [
             ...prev,
@@ -150,9 +168,11 @@ export function App() {
               role: 'assistant',
               content: msg.fullText,
               timestamp: Date.now(),
+              toolCalls: msg.toolCalls || (activeToolCalls.length > 0 ? activeToolCalls : undefined),
             },
           ]);
           setStreamingText('');
+          setActiveToolCalls([]);
           setIsStreaming(false);
           break;
         }
@@ -295,6 +315,7 @@ export function App() {
         messages={messages}
         streamingText={streamingText}
         isStreaming={isStreaming}
+        activeToolCalls={activeToolCalls}
         onQuickPrompt={(prompt) => handleSend(prompt)}
       />
 

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { User, Sparkles, Copy, Check } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
+import { ToolCallCard } from './ToolCallCard';
 import { ChatMessage } from '../../../src/shared/protocol';
 
 interface MessageItemProps {
@@ -57,6 +58,15 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
               )}
             </button>
           </div>
+
+          {/* Render Tool Calls if present */}
+          {message.toolCalls && message.toolCalls.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {message.toolCalls.map((tc) => (
+                <ToolCallCard key={tc.id} toolCall={tc} />
+              ))}
+            </div>
+          )}
 
           <div className="select-text">
             <ReactMarkdown
