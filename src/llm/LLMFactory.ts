@@ -1,6 +1,8 @@
 import { AnthropicProvider } from './AnthropicProvider';
 import { GeminiProvider } from './GeminiProvider';
 import { OpenAIProvider } from './OpenAIProvider';
+import { GroqProvider } from './GroqProvider';
+import { OllamaProvider } from './OllamaProvider';
 import { ILLMProvider } from './types';
 import { ModelOption, ProviderType } from '../shared/protocol';
 
@@ -11,10 +13,14 @@ export class LLMFactory {
     const anthropic = new AnthropicProvider();
     const gemini = new GeminiProvider();
     const openai = new OpenAIProvider();
+    const groq = new GroqProvider();
+    const ollama = new OllamaProvider();
 
     this.providers.set(anthropic.id, anthropic);
     this.providers.set(gemini.id, gemini);
     this.providers.set(openai.id, openai);
+    this.providers.set(groq.id, groq);
+    this.providers.set(ollama.id, ollama);
   }
 
   public static getProvider(provider: ProviderType): ILLMProvider {
@@ -23,6 +29,13 @@ export class LLMFactory {
       throw new Error(`Unknown LLM provider: ${provider}`);
     }
     return p;
+  }
+
+  public static setOllamaBaseUrl(url: string) {
+    const ollama = this.providers.get('ollama') as OllamaProvider;
+    if (ollama) {
+      ollama.setBaseUrl(url);
+    }
   }
 
   public static getAllModels(): ModelOption[] {

@@ -11,6 +11,7 @@ import { UsageTracker } from '../services/metrics/UsageTracker';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import { SessionManager } from '../services/session/SessionManager';
 import {
+  AppSettings,
   ChatMessage,
   ChatSession,
   ExtensionMessage,
@@ -26,6 +27,13 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
   private currentAbortController?: AbortController;
   private conversationHistory: LLMMessage[] = [];
   private activeSession?: ChatSession;
+  private pendingApprovals = new Map<string, (approved: boolean) => void>();
+
+  private settings: AppSettings = {
+    autoApproveEdits: false,
+    autoApproveCommands: false,
+    ollamaBaseUrl: 'http://localhost:11434',
+  };
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -33,8 +41,16 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     private readonly logger: RequestLogger,
     private readonly usageTracker: UsageTracker,
     private readonly toolRegistry: ToolRegistry,
-    private readonly sessionManager: SessionManager
-  ) {}
+    private readonly sessionManager: SessionManager,
+    private readonly globalState: vscode.Memento
+  ) {
+    this.settings = this.globalState.get<AppSettings>('my_coder_settings', {
+      autoApproveEdits: false,
+      autoApproveCommands: false,
+      ollamaBaseUrl: 'http://localhost:11434',
+    });
+    LLMFactory.setOllamaBaseUrl(this.settings.ollamaBaseUrl);
+  }
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
@@ -105,17 +121,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             defaultModel = geminiModel.id;
             defaultProvider = 'gemini';
           }
-        } else if (keys.anthropic) {
-          const anthropicModel = models.find((m) => m.provider === 'anthropic');
-          if (anthropicModel) {
-            defaultModel = anthropicModel.id;
-            defaultProvider = 'anthropic';
-          }
-        } else if (keys.openai) {
-          const openaiModel = models.find((m) => m.provider === 'openai');
-          if (openaiModel) {
-            defaultModel = openaiModel.id;
-            defaultProvider = 'openai';
+        } else if (keys.groq) {
+          const groqModel = models.find((m) => m.provider === 'groq');
+          if (groqModel) {
+            defaultModel = groqModel.id;
+            defaultProvider = 'groq';
           }
         }
 
@@ -140,8 +150,48 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           selectedModel: this.activeSession.model || defaultModel,
           selectedProvider: this.activeSession.provider || defaultProvider,
           usageStats,
+          settings: this.settings,
           activeSession: this.activeSession,
           sessionsList,
+        });
+        break;
+      }
+
+      case 'approveToolCall': {
+        const resolver = this.pendingApprovals.get(message.toolCallId);
+        if (resolver) {
+          resolver(true);
+        }
+        break;
+      }
+
+      case 'denyToolCall': {
+        const resolver = this.pendingApprovals.get(message.toolCallId);
+        if (resolver) {
+          resolver(false);
+        }
+        break;
+      }
+
+      case 'updateSettings': {
+        this.settings = { ...this.settings, ...message.settings };
+        await this.globalState.update('my_coder_settings', this.settings);
+        if (this.settings.ollamaBaseUrl) {
+          LLMFactory.setOllamaBaseUrl(this.settings.ollamaBaseUrl);
+        }
+        await this.postMessage({
+          type: 'settingsUpdated',
+          settings: this.settings,
+        });
+        vscode.window.showInformationMessage('My Coder: Settings updated.');
+        break;
+      }
+
+      case 'searchWorkspaceFiles': {
+        const files = await this.toolRegistry.searchWorkspaceFiles(message.query);
+        await this.postMessage({
+          type: 'workspaceFilesResult',
+          files,
         });
         break;
       }
@@ -265,6 +315,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           this.currentAbortController.abort();
           this.currentAbortController = undefined;
         }
+        // Cancel any pending approvals
+        for (const [id, resolver] of this.pendingApprovals.entries()) {
+          resolver(false);
+        }
+        this.pendingApprovals.clear();
         break;
       }
 
@@ -333,7 +388,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       try {
         args = JSON.parse(match[2].trim());
       } catch {
-        // Fallback for sloppy JSON
         try {
           const cleaned = match[2].trim().replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
           args = JSON.parse(cleaned);
@@ -394,10 +448,28 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     this.activeSession.messages.push(userMessage);
     this.sessionManager.saveSession(this.activeSession);
 
+    // Add user message to LLM history
     this.conversationHistory.push({
       role: 'user',
       content: message.text,
     });
+
+    // Context Compaction: summarize earlier messages if history is large
+    if (this.conversationHistory.length > 18) {
+      const older = this.conversationHistory.slice(0, this.conversationHistory.length - 8);
+      const recent = this.conversationHistory.slice(this.conversationHistory.length - 8);
+      const summaryText = older
+        .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 120)}...`)
+        .join('\n');
+
+      this.conversationHistory = [
+        {
+          role: 'system',
+          content: `### Earlier Conversation Summary (Compacted):\n${summaryText}`,
+        },
+        ...recent,
+      ];
+    }
 
     const fullMessages: LLMMessage[] = [
       { role: 'system', content: systemPrompt },
@@ -458,10 +530,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         const parsedTools = this.parseToolCalls(turnAccumulated);
 
         if (parsedTools.length === 0) {
-          // Model finished its reasoning with no further tools requested
           continueLoop = false;
         } else {
-          // Autonomous Agent Tool Execution Loop
           for (const call of parsedTools) {
             if (this.currentAbortController.signal.aborted) {
               continueLoop = false;
@@ -477,12 +547,48 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             };
 
             accumulatedToolCalls.push(toolEvent);
+
+            // Check if human approval is required
+            const requiresApproval =
+              (call.name === 'execute_command' && !this.settings.autoApproveCommands) ||
+              ((call.name === 'write_file' || call.name === 'edit_file') && !this.settings.autoApproveEdits);
+
+            if (requiresApproval) {
+              toolEvent.status = 'awaiting_approval';
+              await this.postMessage({
+                type: 'toolCallStart',
+                toolCall: toolEvent,
+              });
+
+              // Wait for user to approve or deny from the UI card
+              const approved = await new Promise<boolean>((resolve) => {
+                this.pendingApprovals.set(callId, resolve);
+              });
+              this.pendingApprovals.delete(callId);
+
+              if (!approved) {
+                toolEvent.status = 'error';
+                toolEvent.error = 'User denied permission to execute this tool.';
+                await this.postMessage({
+                  type: 'toolCallEnd',
+                  toolCall: toolEvent,
+                });
+
+                fullMessages.push({
+                  role: 'user',
+                  content: `[Tool Error for ${call.name}]: User denied permission to execute this tool.`,
+                });
+                continue;
+              }
+              toolEvent.status = 'running';
+            }
+
             await this.postMessage({
               type: 'toolCallStart',
               toolCall: toolEvent,
             });
 
-            // Execute the tool in the workspace
+            // Execute the tool in workspace
             const toolResult = await this.toolRegistry.executeTool(
               traceId,
               call.name,
@@ -516,7 +622,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
-      // Turn loop complete: clean up tool tags from final displayed text if desired
       const cleanedResponse = finalAssistantText
         .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
         .trim();

@@ -8,9 +8,15 @@ import { ChatMessage } from '../../../src/shared/protocol';
 
 interface MessageItemProps {
   message: ChatMessage;
+  onApproveToolCall?: (toolCallId: string) => void;
+  onDenyToolCall?: (toolCallId: string) => void;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({
+  message,
+  onApproveToolCall,
+  onDenyToolCall,
+}) => {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
 
@@ -63,7 +69,12 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
           {message.toolCalls && message.toolCalls.length > 0 && (
             <div className="mb-2 space-y-1">
               {message.toolCalls.map((tc) => (
-                <ToolCallCard key={tc.id} toolCall={tc} />
+                <ToolCallCard
+                  key={tc.id}
+                  toolCall={tc}
+                  onApprove={onApproveToolCall}
+                  onDeny={onDenyToolCall}
+                />
               ))}
             </div>
           )}

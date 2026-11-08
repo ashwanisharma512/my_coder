@@ -7,6 +7,9 @@ export class SecretManager {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
   public async getApiKey(provider: ProviderType): Promise<string | undefined> {
+    if (provider === 'ollama') {
+      return 'ollama-local-no-key-needed';
+    }
     return this.secrets.get(`${SecretManager.KEY_PREFIX}${provider}`);
   }
 
@@ -23,16 +26,19 @@ export class SecretManager {
   }
 
   public async getKeysStatus(): Promise<Record<ProviderType, boolean>> {
-    const [hasAnthropic, hasGemini, hasOpenAI] = await Promise.all([
+    const [hasAnthropic, hasGemini, hasOpenAI, hasGroq] = await Promise.all([
       this.getApiKey('anthropic').then((k) => !!k && k.length > 0),
       this.getApiKey('gemini').then((k) => !!k && k.length > 0),
       this.getApiKey('openai').then((k) => !!k && k.length > 0),
+      this.getApiKey('groq').then((k) => !!k && k.length > 0),
     ]);
 
     return {
       anthropic: hasAnthropic,
       gemini: hasGemini,
       openai: hasOpenAI,
+      groq: hasGroq,
+      ollama: true, // Always available locally
     };
   }
 }

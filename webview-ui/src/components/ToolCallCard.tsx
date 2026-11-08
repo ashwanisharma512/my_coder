@@ -9,15 +9,24 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
+  ShieldAlert,
+  Check,
+  X,
 } from 'lucide-react';
 import { ToolCallEvent } from '../../../src/shared/protocol';
 
 interface ToolCallCardProps {
   toolCall: ToolCallEvent;
+  onApprove?: (toolCallId: string) => void;
+  onDeny?: (toolCallId: string) => void;
 }
 
-export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
-  const [expanded, setExpanded] = useState(false);
+export const ToolCallCard: React.FC<ToolCallCardProps> = ({
+  toolCall,
+  onApprove,
+  onDeny,
+}) => {
+  const [expanded, setExpanded] = useState(toolCall.status === 'awaiting_approval');
 
   const getToolIcon = () => {
     switch (toolCall.name) {
@@ -37,6 +46,12 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
 
   const getStatusBadge = () => {
     switch (toolCall.status) {
+      case 'awaiting_approval':
+        return (
+          <span className="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-950/60 border border-amber-600/40 px-1.5 py-0.5 rounded">
+            <ShieldAlert className="w-3 h-3" /> Awaiting Approval
+          </span>
+        );
       case 'running':
         return (
           <span className="flex items-center gap-1 text-[10px] text-blue-400">
@@ -64,8 +79,16 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
     toolCall.args?.directory ||
     '';
 
+  const isAwaiting = toolCall.status === 'awaiting_approval';
+
   return (
-    <div className="my-1.5 rounded border border-vscode-border bg-vscode-sidebg/60 text-xs overflow-hidden select-text">
+    <div
+      className={`my-1.5 rounded border text-xs overflow-hidden select-text transition-colors ${
+        isAwaiting
+          ? 'border-amber-600/60 bg-amber-950/20'
+          : 'border-vscode-border bg-vscode-sidebg/60'
+      }`}
+    >
       <div
         onClick={() => setExpanded(!expanded)}
         className="flex items-center justify-between px-2.5 py-1.5 cursor-pointer hover:bg-vscode-inputBg/40 transition-colors select-none"
@@ -94,6 +117,37 @@ export const ToolCallCard: React.FC<ToolCallCardProps> = ({ toolCall }) => {
           )}
         </div>
       </div>
+
+      {/* Approval Buttons for Human in the Loop */}
+      {isAwaiting && (
+        <div className="px-3 py-2 bg-amber-950/40 border-t border-amber-800/40 flex items-center justify-between gap-2 select-none">
+          <span className="text-[11px] text-amber-200">
+            {toolCall.name === 'execute_command'
+              ? 'Permission requested to run terminal command.'
+              : 'Permission requested to modify file (diff opened in VS Code).'}
+          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onApprove?.(toolCall.id);
+              }}
+              className="flex items-center gap-1 px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-medium transition-colors"
+            >
+              <Check className="w-3 h-3" /> Approve
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeny?.(toolCall.id);
+              }}
+              className="flex items-center gap-1 px-2 py-1 bg-red-700/80 hover:bg-red-600 text-white rounded text-[11px] font-medium transition-colors"
+            >
+              <X className="w-3 h-3" /> Deny
+            </button>
+          </div>
+        </div>
+      )}
 
       {expanded && (
         <div className="p-2.5 border-t border-vscode-border/50 bg-[#141414] text-[11px] font-mono space-y-2 select-text">

@@ -1,4 +1,4 @@
-export type ProviderType = 'anthropic' | 'gemini' | 'openai';
+export type ProviderType = 'anthropic' | 'gemini' | 'openai' | 'groq' | 'ollama';
 
 export interface ModelOption {
   id: string;
@@ -13,16 +13,18 @@ export interface ActiveContext {
   languageId?: string;
   selectedText?: string;
   hasSelection: boolean;
+  attachedFiles?: string[];
 }
 
 export interface ToolCallEvent {
   id: string;
   name: string;
   args: Record<string, any>;
-  status: 'running' | 'completed' | 'error';
+  status: 'running' | 'completed' | 'error' | 'awaiting_approval';
   output?: string;
   error?: string;
   durationMs?: number;
+  diffPath?: string;
 }
 
 export interface ChatMessage {
@@ -66,6 +68,12 @@ export interface ChatSession {
   messages: ChatMessage[];
 }
 
+export interface AppSettings {
+  autoApproveEdits: boolean;
+  autoApproveCommands: boolean;
+  ollamaBaseUrl: string;
+}
+
 // Webview -> Extension
 export type WebviewMessage =
   | { type: 'ready' }
@@ -90,7 +98,11 @@ export type WebviewMessage =
   | { type: 'loadSession'; sessionId: string }
   | { type: 'deleteSession'; sessionId: string }
   | { type: 'newSession' }
-  | { type: 'listSessions' };
+  | { type: 'listSessions' }
+  | { type: 'approveToolCall'; toolCallId: string }
+  | { type: 'denyToolCall'; toolCallId: string }
+  | { type: 'updateSettings'; settings: Partial<AppSettings> }
+  | { type: 'searchWorkspaceFiles'; query: string };
 
 // Extension -> Webview
 export type ExtensionMessage =
@@ -102,6 +114,7 @@ export type ExtensionMessage =
       selectedModel: string;
       selectedProvider: ProviderType;
       usageStats: UsageStats;
+      settings: AppSettings;
       activeSession?: ChatSession;
       sessionsList?: SessionSummary[];
     }
@@ -114,4 +127,6 @@ export type ExtensionMessage =
   | { type: 'keysStatusUpdated'; apiKeys: Record<ProviderType, boolean> }
   | { type: 'usageStatsUpdated'; usageStats: UsageStats }
   | { type: 'sessionLoaded'; session: ChatSession }
-  | { type: 'sessionsListUpdated'; sessions: SessionSummary[] };
+  | { type: 'sessionsListUpdated'; sessions: SessionSummary[] }
+  | { type: 'settingsUpdated'; settings: AppSettings }
+  | { type: 'workspaceFilesResult'; files: string[] };

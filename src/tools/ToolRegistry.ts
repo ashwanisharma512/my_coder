@@ -111,7 +111,7 @@ export class ToolRegistry {
     ];
   }
 
-  private resolveWorkspacePath(targetPath: string): string {
+  public resolveWorkspacePath(targetPath: string): string {
     if (path.isAbsolute(targetPath)) {
       return targetPath;
     }
@@ -120,6 +120,49 @@ export class ToolRegistry {
       return path.resolve(targetPath);
     }
     return path.resolve(workspaceRoot, targetPath);
+  }
+
+  public async showVisualDiff(filePath: string, originalContent: string, proposedContent: string) {
+    try {
+      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const diffDir = workspaceRoot
+        ? path.join(workspaceRoot, '.my_coder', 'diffs')
+        : path.join(path.dirname(filePath), '.my_coder', 'diffs');
+
+      if (!fs.existsSync(diffDir)) {
+        fs.mkdirSync(diffDir, { recursive: true });
+      }
+
+      const basename = path.basename(filePath);
+      const proposedPath = path.join(diffDir, `proposed_${basename}`);
+      fs.writeFileSync(proposedPath, proposedContent, 'utf-8');
+
+      const originalUri = vscode.Uri.file(this.resolveWorkspacePath(filePath));
+      const proposedUri = vscode.Uri.file(proposedPath);
+
+      await vscode.commands.executeCommand(
+        'vscode.diff',
+        originalUri,
+        proposedUri,
+        `Proposed Changes: ${basename}`
+      );
+    } catch (err) {
+      console.error('Failed to open visual diff:', err);
+    }
+  }
+
+  public async searchWorkspaceFiles(query: string): Promise<string[]> {
+    try {
+      const uris = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/.git/**,**/dist/**,**/.my_coder/**}', 50);
+      const relativePaths = uris.map((u) => vscode.workspace.asRelativePath(u));
+      if (!query.trim()) {
+        return relativePaths.slice(0, 20);
+      }
+      const q = query.toLowerCase();
+      return relativePaths.filter((p) => p.toLowerCase().includes(q)).slice(0, 20);
+    } catch {
+      return [];
+    }
   }
 
   public async executeTool(
@@ -207,6 +250,11 @@ export class ToolRegistry {
     const fullPath = this.resolveWorkspacePath(args.filePath);
     const parentDir = path.dirname(fullPath);
 
+    if (fs.existsSync(fullPath)) {
+      const original = fs.readFileSync(fullPath, 'utf-8');
+      await this.showVisualDiff(args.filePath, original, args.content);
+    }
+
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
     }
@@ -239,6 +287,10 @@ export class ToolRegistry {
     }
 
     const updated = content.replace(args.target, args.replacement);
+
+    // Show side-by-side diff in VS Code
+    await this.showVisualDiff(args.filePath, content, updated);
+
     fs.writeFileSync(fullPath, updated, 'utf-8');
 
     return {

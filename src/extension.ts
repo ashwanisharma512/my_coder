@@ -19,7 +19,8 @@ export function activate(context: vscode.ExtensionContext) {
     logger,
     usageTracker,
     toolRegistry,
-    sessionManager
+    sessionManager,
+    context.globalState
   );
 
   // Register Webview View Provider for the sidebar view container

@@ -9,6 +9,8 @@ interface MessageListProps {
   isStreaming: boolean;
   activeToolCalls?: ToolCallEvent[];
   onQuickPrompt?: (prompt: string) => void;
+  onApproveToolCall?: (toolCallId: string) => void;
+  onDenyToolCall?: (toolCallId: string) => void;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -17,6 +19,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   isStreaming,
   activeToolCalls,
   onQuickPrompt,
+  onApproveToolCall,
+  onDenyToolCall,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -69,7 +73,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
       {messages.map((msg) => (
-        <MessageItem key={msg.id} message={msg} />
+        <MessageItem
+          key={msg.id}
+          message={msg}
+          onApproveToolCall={onApproveToolCall}
+          onDenyToolCall={onDenyToolCall}
+        />
       ))}
 
       {isStreaming && (
@@ -81,6 +90,8 @@ export const MessageList: React.FC<MessageListProps> = ({
             timestamp: Date.now(),
             toolCalls: activeToolCalls,
           }}
+          onApproveToolCall={onApproveToolCall}
+          onDenyToolCall={onDenyToolCall}
         />
       )}
     </div>

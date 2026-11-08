@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 import { ProviderType, UsageStats } from '../../shared/protocol';
 
 interface PersistentUsageRecord {
-  hourly: Record<string, Record<ProviderType, number>>;
-  daily: Record<string, Record<ProviderType, number>>;
+  hourly: Record<string, Partial<Record<ProviderType, number>>>;
+  daily: Record<string, Partial<Record<ProviderType, number>>>;
 }
 
 export class UsageTracker {
@@ -36,10 +36,10 @@ export class UsageTracker {
     const dayKey = this.getDayKey();
 
     if (!record.hourly[hourKey]) {
-      record.hourly[hourKey] = { anthropic: 0, gemini: 0, openai: 0 };
+      record.hourly[hourKey] = {};
     }
     if (!record.daily[dayKey]) {
-      record.daily[dayKey] = { anthropic: 0, gemini: 0, openai: 0 };
+      record.daily[dayKey] = {};
     }
 
     record.hourly[hourKey][provider] = (record.hourly[hourKey][provider] || 0) + 1;
@@ -62,33 +62,29 @@ export class UsageTracker {
     const hourKey = this.getHourKey();
     const dayKey = this.getDayKey();
 
-    const hourData = record.hourly[hourKey] || { anthropic: 0, gemini: 0, openai: 0 };
-    const dayData = record.daily[dayKey] || { anthropic: 0, gemini: 0, openai: 0 };
+    const hourData = record.hourly[hourKey] || {};
+    const dayData = record.daily[dayKey] || {};
 
-    const callsThisHour =
-      (hourData.anthropic || 0) + (hourData.gemini || 0) + (hourData.openai || 0);
-    const callsToday =
-      (dayData.anthropic || 0) + (dayData.gemini || 0) + (dayData.openai || 0);
+    const providers: ProviderType[] = ['anthropic', 'gemini', 'openai', 'groq', 'ollama'];
+
+    let callsThisHour = 0;
+    let callsToday = 0;
+    const byProvider: any = {};
+
+    for (const p of providers) {
+      const hCount = hourData[p] || 0;
+      const dCount = dayData[p] || 0;
+      callsThisHour += hCount;
+      callsToday += dCount;
+      byProvider[p] = { hour: hCount, day: dCount };
+    }
 
     return {
       callsThisHour,
       callsToday,
       currentHourLabel: hourKey,
       currentDayLabel: dayKey,
-      byProvider: {
-        anthropic: {
-          hour: hourData.anthropic || 0,
-          day: dayData.anthropic || 0,
-        },
-        gemini: {
-          hour: hourData.gemini || 0,
-          day: dayData.gemini || 0,
-        },
-        openai: {
-          hour: hourData.openai || 0,
-          day: dayData.openai || 0,
-        },
-      },
+      byProvider,
     };
   }
 

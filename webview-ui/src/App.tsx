@@ -9,6 +9,7 @@ import { UsageModal } from './components/UsageModal';
 import { HistoryDrawer } from './components/HistoryDrawer';
 import {
   ActiveContext,
+  AppSettings,
   ChatMessage,
   ExtensionMessage,
   ModelOption,
@@ -26,7 +27,9 @@ export function App() {
     { id: 'gemini-3.8-pro', name: 'Gemini 3.8 Pro', provider: 'gemini' },
     { id: 'gemini-3.8-flash-lite', name: 'Gemini 3.8 Flash Lite', provider: 'gemini' },
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },
-    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
+    { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq Free)', provider: 'groq' },
+    { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq Free)', provider: 'groq' },
+    { id: 'qwen2.5-coder:7b', name: 'Qwen 2.5 Coder 7B (Ollama Local)', provider: 'ollama' },
     { id: 'claude-3-7-sonnet-20250219', name: 'Claude 3.7 Sonnet', provider: 'anthropic' },
     { id: 'claude-3-5-sonnet-20241022', name: 'Claude 3.5 Sonnet', provider: 'anthropic' },
     { id: 'gpt-4o', name: 'GPT-4o', provider: 'openai' },
@@ -38,6 +41,14 @@ export function App() {
     anthropic: false,
     gemini: false,
     openai: false,
+    groq: false,
+    ollama: true,
+  });
+
+  const [settings, setSettings] = useState<AppSettings>({
+    autoApproveEdits: false,
+    autoApproveCommands: false,
+    ollamaBaseUrl: 'http://localhost:11434',
   });
 
   const [usageStats, setUsageStats] = useState<UsageStats>({
@@ -47,6 +58,8 @@ export function App() {
       anthropic: { hour: 0, day: 0 },
       gemini: { hour: 0, day: 0 },
       openai: { hour: 0, day: 0 },
+      groq: { hour: 0, day: 0 },
+      ollama: { hour: 0, day: 0 },
     },
     currentHourLabel: '',
     currentDayLabel: '',
@@ -55,6 +68,7 @@ export function App() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>('');
   const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
 
   const [activeContext, setActiveContext] = useState<ActiveContext>({ hasSelection: false });
   const [includeContext, setIncludeContext] = useState<boolean>(true);
@@ -89,6 +103,9 @@ export function App() {
           if (msg.usageStats) {
             setUsageStats(msg.usageStats);
           }
+          if (msg.settings) {
+            setSettings(msg.settings);
+          }
           if (msg.sessionsList) {
             setSessions(msg.sessionsList);
           }
@@ -105,6 +122,16 @@ export function App() {
           break;
         }
 
+        case 'settingsUpdated': {
+          setSettings(msg.settings);
+          break;
+        }
+
+        case 'workspaceFilesResult': {
+          setWorkspaceFiles(msg.files);
+          break;
+        }
+
         case 'sessionLoaded': {
           setActiveSessionId(msg.session.id);
           setMessages(msg.session.messages || []);
@@ -115,6 +142,7 @@ export function App() {
             setSelectedProvider(msg.session.provider);
           }
           setStreamingText('');
+          setActiveToolCalls([]);
           setIsStreaming(false);
           break;
         }
@@ -146,8 +174,12 @@ export function App() {
 
         case 'toolCallStart': {
           setActiveToolCalls((prev) => {
-            const exists = prev.find((t) => t.id === msg.toolCall.id);
-            if (exists) return prev;
+            const idx = prev.findIndex((t) => t.id === msg.toolCall.id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = msg.toolCall;
+              return updated;
+            }
             return [...prev, msg.toolCall];
           });
           break;
@@ -188,6 +220,7 @@ export function App() {
             },
           ]);
           setStreamingText('');
+          setActiveToolCalls([]);
           setIsStreaming(false);
           break;
         }
@@ -196,7 +229,7 @@ export function App() {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [activeToolCalls]);
 
   const handleSend = (textToSend?: string) => {
     const text = textToSend ?? input;
@@ -212,6 +245,7 @@ export function App() {
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setStreamingText('');
+    setActiveToolCalls([]);
     setIsStreaming(true);
 
     vscode.postMessage({
@@ -226,7 +260,7 @@ export function App() {
   const handleAbort = () => {
     vscode.postMessage({ type: 'abortStream' });
     setIsStreaming(false);
-    if (streamingText) {
+    if (streamingText || activeToolCalls.length > 0) {
       setMessages((prev) => [
         ...prev,
         {
@@ -234,9 +268,11 @@ export function App() {
           role: 'assistant',
           content: streamingText + '\n\n*(Generation stopped)*',
           timestamp: Date.now(),
+          toolCalls: activeToolCalls.length > 0 ? activeToolCalls : undefined,
         },
       ]);
       setStreamingText('');
+      setActiveToolCalls([]);
     }
   };
 
@@ -285,6 +321,22 @@ export function App() {
     vscode.postMessage({ type: 'resetUsageStats' });
   };
 
+  const handleApproveToolCall = (toolCallId: string) => {
+    vscode.postMessage({ type: 'approveToolCall', toolCallId });
+  };
+
+  const handleDenyToolCall = (toolCallId: string) => {
+    vscode.postMessage({ type: 'denyToolCall', toolCallId });
+  };
+
+  const handleUpdateSettings = (newSettings: Partial<AppSettings>) => {
+    vscode.postMessage({ type: 'updateSettings', settings: newSettings });
+  };
+
+  const handleSearchFiles = (query: string) => {
+    vscode.postMessage({ type: 'searchWorkspaceFiles', query });
+  };
+
   return (
     <div className="flex flex-col h-full w-full bg-vscode-bg text-vscode-fg">
       <Header
@@ -317,6 +369,8 @@ export function App() {
         isStreaming={isStreaming}
         activeToolCalls={activeToolCalls}
         onQuickPrompt={(prompt) => handleSend(prompt)}
+        onApproveToolCall={handleApproveToolCall}
+        onDenyToolCall={handleDenyToolCall}
       />
 
       <InputArea
@@ -325,14 +379,18 @@ export function App() {
         onSend={() => handleSend()}
         onAbort={handleAbort}
         isStreaming={isStreaming}
+        workspaceFiles={workspaceFiles}
+        onSearchFiles={handleSearchFiles}
       />
 
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         apiKeys={apiKeys}
+        settings={settings}
         onSaveKey={handleSaveApiKey}
         onRemoveKey={handleRemoveApiKey}
+        onUpdateSettings={handleUpdateSettings}
         onOpenLogs={handleOpenLogs}
       />
 
