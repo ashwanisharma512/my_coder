@@ -1,0 +1,89 @@
+{
+  "name": "my-coder",
+  "displayName": "My Coder",
+  "description": "Multi-model AI coding assistant for VS Code powered by Claude, Gemini, and OpenAI",
+  "version": "0.1.0",
+  "publisher": "personal",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "my-coder-sidebar-view",
+          "title": "My Coder",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "my-coder-sidebar-view": [
+        {
+          "type": "webview",
+          "id": "my-coder.chatView",
+          "name": "Chat",
+          "visibility": "visible"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "my-coder.openChat",
+        "title": "My Coder: Open Chat",
+        "category": "My Coder"
+      },
+      {
+        "command": "my-coder.addSelectionToChat",
+        "title": "My Coder: Add Selection to Chat",
+        "category": "My Coder"
+      },
+      {
+        "command": "my-coder.newChat",
+        "title": "My Coder: Start New Chat",
+        "category": "My Coder"
+      },
+      {
+        "command": "my-coder.openLogs",
+        "title": "My Coder: Open Request & Tool Audit Log",
+        "category": "My Coder"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "my-coder.addSelectionToChat",
+          "when": "editorHasSelection",
+          "group": "my-coder"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build:extension": "node esbuild.js",
+    "build:webview": "npm --prefix webview-ui run build",
+    "build": "npm run build:webview && npm run build:extension",
+    "watch:extension": "node esbuild.js --watch",
+    "watch:webview": "npm --prefix webview-ui run dev",
+    "compile": "tsc -p ./ --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
+    "@google/genai": "^3.0.0",
+    "openai": "^7.53.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.5"
+  }
+}

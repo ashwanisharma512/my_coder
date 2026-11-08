@@ -1,0 +1,9 @@
+node_modules
+dist
+out
+*.vsix
+.DS_Store
+.env
+.my_coder/
+webview-ui/node_modules/
+webview-ui/dist/
