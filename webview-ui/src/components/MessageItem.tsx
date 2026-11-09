@@ -26,6 +26,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const displayedContent = message.role === 'assistant' 
+    ? message.content
+        .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
+        .replace(/<tool_call[\s\S]*$/gi, '')
+        .trim()
+    : message.content;
+
   return (
     <div
       className={`px-3 py-3 border-b border-vscode-border/50 group select-text ${
@@ -79,61 +86,63 @@ export const MessageItem: React.FC<MessageItemProps> = ({
             </div>
           )}
 
-          <div className="select-text">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                code({ inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const codeString = String(children).replace(/\n$/, '');
+          {displayedContent && (
+            <div className="select-text">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || '');
+                    const codeString = String(children).replace(/\n$/, '');
 
-                  if (!inline && (match || codeString.includes('\n'))) {
+                    if (!inline && (match || codeString.includes('\n'))) {
+                      return (
+                        <CodeBlock
+                          language={match ? match[1] : undefined}
+                          code={codeString}
+                        />
+                      );
+                    }
+
                     return (
-                      <CodeBlock
-                        language={match ? match[1] : undefined}
-                        code={codeString}
-                      />
+                      <code
+                        className="bg-vscode-inputBg text-vscode-inputFg px-1 py-0.5 rounded font-mono text-[11px] border border-vscode-border select-text"
+                        {...props}
+                      >
+                        {children}
+                      </code>
                     );
-                  }
-
-                  return (
-                    <code
-                      className="bg-vscode-inputBg text-vscode-inputFg px-1 py-0.5 rounded font-mono text-[11px] border border-vscode-border select-text"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
-                p({ children }: any) {
-                  return <p className="mb-2 last:mb-0 leading-normal select-text">{children}</p>;
-                },
-                ul({ children }: any) {
-                  return <ul className="list-disc pl-4 mb-2 space-y-1 select-text">{children}</ul>;
-                },
-                ol({ children }: any) {
-                  return <ol className="list-decimal pl-4 mb-2 space-y-1 select-text">{children}</ol>;
-                },
-                li({ children }: any) {
-                  return <li className="leading-normal select-text">{children}</li>;
-                },
-                a({ href, children }: any) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-blue-400 hover:underline select-text"
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+                  },
+                  p({ children }: any) {
+                    return <p className="mb-2 last:mb-0 leading-normal select-text">{children}</p>;
+                  },
+                  ul({ children }: any) {
+                    return <ul className="list-disc pl-4 mb-2 space-y-1 select-text">{children}</ul>;
+                  },
+                  ol({ children }: any) {
+                    return <ol className="list-decimal pl-4 mb-2 space-y-1 select-text">{children}</ol>;
+                  },
+                  li({ children }: any) {
+                    return <li className="leading-normal select-text">{children}</li>;
+                  },
+                  a({ href, children }: any) {
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-400 hover:underline select-text"
+                      >
+                        {children}
+                      </a>
+                    );
+                  },
+                }}
+              >
+                {displayedContent}
+              </ReactMarkdown>
+            </div>
+          )}
         </div>
       </div>
     </div>

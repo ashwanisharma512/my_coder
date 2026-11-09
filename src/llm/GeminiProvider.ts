@@ -43,15 +43,40 @@ export class GeminiProvider implements ILLMProvider {
 
       const chosenModel = model || 'gemini-3.8-flash';
 
-      const responseStream = await ai.models.generateContentStream({
-        model: chosenModel,
-        contents,
-        config: {
-          systemInstruction: systemInstruction || undefined,
-          temperature: options?.temperature ?? 0.3,
-          maxOutputTokens: options?.maxTokens || 4096,
-        },
-      });
+      let responseStream;
+      const maxRetries = 2;
+
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          responseStream = await ai.models.generateContentStream({
+            model: chosenModel,
+            contents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+              temperature: options?.temperature ?? 0.3,
+              maxOutputTokens: options?.maxTokens || 4096,
+            },
+          });
+          break;
+        } catch (streamErr: any) {
+          const errMsg = String(streamErr?.message || streamErr);
+          const isTransient =
+            errMsg.includes('high demand') ||
+            errMsg.includes('503') ||
+            errMsg.includes('UNAVAILABLE') ||
+            errMsg.includes('fetch failed');
+
+          if (isTransient && attempt < maxRetries && !options?.abortSignal?.aborted) {
+            await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+            continue;
+          }
+          throw streamErr;
+        }
+      }
+
+      if (!responseStream) {
+        throw new Error('Failed to initialize Gemini content stream.');
+      }
 
       let accumulated = '';
 
@@ -85,6 +110,15 @@ export class GeminiProvider implements ILLMProvider {
       } catch {
         // Not JSON formatted
       }
+
+      if (rawMsg.includes('prepayment credits are depleted') || rawMsg.includes('billing#prepay')) {
+        rawMsg =
+          `Your Google AI Studio project prepayment credits are depleted.\n\n` +
+          `• **Option 1 (Refill):** Visit [Google AI Studio Projects](https://ai.studio/projects) to add prepaid credits.\n` +
+          `• **Option 2 (Instant Free):** Switch provider in the top dropdown to **Groq Cloud (Fast & Free)**. Get a free API key instantly at [console.groq.com/keys](https://console.groq.com/keys) with fast Llama 3.3 70B & Qwen 2.5!\n` +
+          `• **Option 3 (Local Free):** Switch provider to **Ollama** for 100% free local models (zero API keys needed).`;
+      }
+
       callbacks.onError(new Error(rawMsg));
     }
   }

@@ -172,6 +172,11 @@ export function App() {
           break;
         }
 
+        case 'streamSync': {
+          setStreamingText(msg.text);
+          break;
+        }
+
         case 'toolCallStart': {
           setActiveToolCalls((prev) => {
             const idx = prev.findIndex((t) => t.id === msg.toolCall.id);
@@ -210,13 +215,21 @@ export function App() {
         }
 
         case 'streamError': {
+          const toolCallsToKeep =
+            msg.toolCalls || (activeToolCalls.length > 0 ? activeToolCalls : undefined);
+          const partial = (msg.partialText || streamingText || '')
+            .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
+            .replace(/<tool_call[\s\S]*$/gi, '')
+            .trim();
+
           setMessages((prev) => [
             ...prev,
             {
               id: Date.now().toString(),
               role: 'assistant',
-              content: `⚠️ **Error:** ${msg.error}`,
+              content: (partial ? partial + '\n\n' : '') + `⚠️ **Error:** ${msg.error}`,
               timestamp: Date.now(),
+              toolCalls: toolCallsToKeep,
             },
           ]);
           setStreamingText('');

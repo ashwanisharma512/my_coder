@@ -385,14 +385,21 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       const raw = match[0];
       const name = match[1];
       let args = {};
+      const rawArgs = match[2].trim();
       try {
-        args = JSON.parse(match[2].trim());
+        args = JSON.parse(rawArgs);
       } catch {
         try {
-          const cleaned = match[2].trim().replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
-          args = JSON.parse(cleaned);
+          // Normalize unescaped Windows backslashes
+          const escaped = rawArgs.replace(/\\(?![/"'bfnrtu])/g, '\\\\');
+          args = JSON.parse(escaped);
         } catch {
-          args = { input: match[2].trim() };
+          try {
+            const cleaned = rawArgs.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
+            args = JSON.parse(cleaned);
+          } catch {
+            args = { input: rawArgs };
+          }
         }
       }
       calls.push({ name, args, raw });
@@ -480,7 +487,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     let currentTurn = 0;
     const maxTurns = 6;
     let continueLoop = true;
-    let finalAssistantText = '';
+    let accumulatedAssistantText = '';
 
     try {
       while (continueLoop && currentTurn < maxTurns) {
@@ -493,6 +500,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         });
 
         let turnAccumulated = '';
+        let toolCallDetected = false;
 
         await provider.streamChat(
           fullMessages,
@@ -501,7 +509,22 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           {
             onToken: (token) => {
               turnAccumulated += token;
-              this.postMessage({ type: 'streamToken', token });
+
+              if (!toolCallDetected) {
+                const toolCallIndex = turnAccumulated.indexOf('<tool_call');
+                if (toolCallIndex !== -1) {
+                  toolCallDetected = true;
+                  // Sync clean text up to <tool_call
+                  const safeBefore = turnAccumulated.slice(0, toolCallIndex).trim();
+                  const currentDisplay = (accumulatedAssistantText ? accumulatedAssistantText + '\n\n' : '') + safeBefore;
+                  this.postMessage({
+                    type: 'streamSync',
+                    text: currentDisplay,
+                  });
+                  return;
+                }
+                this.postMessage({ type: 'streamToken', token });
+              }
             },
             onError: (error) => {
               throw error;
@@ -524,7 +547,19 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           turnAccumulated
         );
 
-        finalAssistantText += (finalAssistantText ? '\n\n' : '') + turnAccumulated;
+        const turnCleanText = turnAccumulated
+          .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
+          .trim();
+
+        if (turnCleanText) {
+          accumulatedAssistantText += (accumulatedAssistantText ? '\n\n' : '') + turnCleanText;
+        }
+
+        // Keep UI synchronized with clean text
+        await this.postMessage({
+          type: 'streamSync',
+          text: accumulatedAssistantText,
+        });
 
         // Check if the model invoked any tools
         const parsedTools = this.parseToolCalls(turnAccumulated);
@@ -622,11 +657,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
-      const cleanedResponse = finalAssistantText
-        .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
-        .trim();
-
-      const assistantMsgContent = cleanedResponse || finalAssistantText;
+      const assistantMsgContent = accumulatedAssistantText.trim() || 'Task completed.';
 
       this.conversationHistory.push({
         role: 'assistant',
@@ -666,9 +697,28 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         '',
         errMsg
       );
+
+      // Preserve completed tool calls in session so partial work is never lost
+      if (this.activeSession) {
+        this.activeSession.messages.push({
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: (accumulatedAssistantText ? accumulatedAssistantText + '\n\n' : '') + `⚠️ **Error:** ${errMsg}`,
+          timestamp: Date.now(),
+          toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        });
+        this.sessionManager.saveSession(this.activeSession);
+        await this.postMessage({
+          type: 'sessionsListUpdated',
+          sessions: this.sessionManager.listSessions(),
+        });
+      }
+
       await this.postMessage({
         type: 'streamError',
         error: errMsg,
+        toolCalls: accumulatedToolCalls.length > 0 ? accumulatedToolCalls : undefined,
+        partialText: accumulatedAssistantText,
       });
     }
   }

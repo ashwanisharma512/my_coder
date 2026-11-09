@@ -119,8 +119,9 @@ export type ExtensionMessage =
       sessionsList?: SessionSummary[];
     }
   | { type: 'streamToken'; token: string }
+  | { type: 'streamSync'; text: string }
   | { type: 'streamEnd'; fullText: string; toolCalls?: ToolCallEvent[] }
-  | { type: 'streamError'; error: string }
+  | { type: 'streamError'; error: string; toolCalls?: ToolCallEvent[]; partialText?: string }
   | { type: 'toolCallStart'; toolCall: ToolCallEvent }
   | { type: 'toolCallEnd'; toolCall: ToolCallEvent }
   | { type: 'contextUpdated'; activeContext: ActiveContext }
