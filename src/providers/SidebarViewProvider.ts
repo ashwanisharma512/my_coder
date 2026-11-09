@@ -563,6 +563,9 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
         const turnCleanText = turnAccumulated
           .replace(/<tool_call\s+name=["'][^"']+["']\s*>[\s\S]*?<\/tool_call>/gi, '')
+          .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '')
+          .replace(/<tool_call[\s\S]*$/gi, '')
+          .replace(/<\/tool_call>/gi, '')
           .trim();
 
         if (turnCleanText) {
@@ -579,6 +582,15 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         const parsedTools = this.parseToolCalls(turnAccumulated);
 
         if (parsedTools.length === 0) {
+          // If the model attempted a tool call but output an empty/unclosed tag, automatically prompt it to invoke properly
+          if (turnAccumulated.includes('<tool_call') && loopCount < MAX_TOOL_TURNS) {
+            fullMessages.push({
+              role: 'user',
+              content:
+                'You output a <tool_call> tag but did not provide a valid tool name and JSON parameters. Please invoke the tool now using the exact syntax:\n<tool_call name="write_file">\n{"filePath": "path", "content": "..."}\n</tool_call>\nAvailable tools: write_file, edit_file, read_file, execute_command, list_files.',
+            });
+            continue;
+          }
           continueLoop = false;
         } else {
           for (const call of parsedTools) {

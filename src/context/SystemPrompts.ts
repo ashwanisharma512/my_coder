@@ -46,6 +46,8 @@ You can execute tools in the user's workspace by outputting a \`<tool_call>\` bl
 ### Tool Calling Rules:
 - Only invoke ONE or TWO necessary tools at a time.
 - Always provide valid JSON inside the \`<tool_call name="...">\` tag.
+- When you intend to write or modify code, do NOT just say you will do it. You MUST IMMEDIATELY invoke the tool (\`write_file\`, \`edit_file\`, or \`execute_command\`) in the same turn.
+- Never output empty or placeholder \`<tool_call>\` tags without the \`name\` attribute and JSON parameters.
 - When you invoke a tool, the system will execute it and return the output to you in \`[Tool Result for ...]\`.
 - Read files before editing them if you need to know their exact contents.
 - Explain your reasoning before calling a tool.

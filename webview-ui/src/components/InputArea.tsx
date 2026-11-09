@@ -7,6 +7,7 @@ interface InputAreaProps {
   onSend: () => void;
   onAbort: () => void;
   isStreaming: boolean;
+  activeToolName?: string;
   workspaceFiles: string[];
   onSearchFiles: (query: string) => void;
 }
@@ -17,6 +18,7 @@ export const InputArea: React.FC<InputAreaProps> = ({
   onSend,
   onAbort,
   isStreaming,
+  activeToolName,
   workspaceFiles,
   onSearchFiles,
 }) => {
@@ -104,6 +106,23 @@ export const InputArea: React.FC<InputAreaProps> = ({
 
   return (
     <div className="p-2.5 border-t border-vscode-border bg-vscode-sidebg relative">
+      {/* Dynamic Agent Status Indicator */}
+      {isStreaming && (
+        <div className="flex items-center gap-2 mb-1.5 px-1 py-0.5 text-[11px] font-medium rounded select-none animate-fadeIn">
+          {activeToolName ? (
+            <div className="flex items-center gap-1.5 text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+              <span>Running tool: <code className="px-1 py-0.2 rounded bg-vscode-inputBg font-mono text-[10px] text-amber-300">{activeToolName}</code>...</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-sky-400">
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></span>
+              <span>My Coder is thinking and writing...</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* File mention autocomplete popup */}
       {showFilePicker && workspaceFiles.length > 0 && (
         <div className="absolute bottom-full left-2 right-2 mb-1 bg-vscode-bg border border-vscode-border rounded shadow-xl overflow-hidden max-h-48 overflow-y-auto z-40 text-xs">
@@ -156,6 +175,15 @@ export const InputArea: React.FC<InputAreaProps> = ({
             <Send className="w-3.5 h-3.5" />
           </button>
         )}
+      </div>
+
+      {/* Bottom helper line */}
+      <div className="flex items-center justify-between px-1 pt-1 text-[10px] text-neutral-500 select-none">
+        <span className="flex items-center gap-1">
+          <span className={`w-1.5 h-1.5 rounded-full ${isStreaming ? 'bg-sky-400 animate-pulse' : 'bg-emerald-500'}`}></span>
+          {isStreaming ? 'Busy' : 'Idle (ready)'}
+        </span>
+        <span>Shift+Enter for newline</span>
       </div>
     </div>
   );

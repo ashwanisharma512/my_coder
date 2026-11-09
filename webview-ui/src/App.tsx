@@ -392,6 +392,7 @@ export function App() {
         onSend={() => handleSend()}
         onAbort={handleAbort}
         isStreaming={isStreaming}
+        activeToolName={activeToolCalls.find((t) => t.status === 'running')?.name}
         workspaceFiles={workspaceFiles}
         onSearchFiles={handleSearchFiles}
       />
