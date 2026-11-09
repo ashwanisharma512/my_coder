@@ -9,8 +9,9 @@ export class GroqProvider implements ILLMProvider {
     return [
       { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (Free)', contextWindow: '128k' },
       { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (Free)', contextWindow: '128k' },
-      { id: 'qwen-2.5-32b', name: 'Qwen 2.5 32B (Free)', contextWindow: '128k' },
-      { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B (Free)', contextWindow: '32k' },
+      { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Free)', contextWindow: '128k' },
+      { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Free)', contextWindow: '128k' },
+      { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (Free)', contextWindow: '128k' },
     ];
   }
 
