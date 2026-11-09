@@ -348,6 +348,20 @@ export class ToolRegistry {
           maxBuffer: 1024 * 1024,
         },
         (error, stdout, stderr) => {
+          const combined = `${stdout || ''}\n${stderr || ''}`.trim();
+          const isServerStartup =
+            /uvicorn running on|application startup complete|started server process|running on http|listening on|server listening/i.test(
+              combined
+            );
+
+          if (isServerStartup) {
+            resolve({
+              success: true,
+              output: `[Server started and active]\n${combined}`,
+            });
+            return;
+          }
+
           if (error) {
             resolve({
               success: false,
