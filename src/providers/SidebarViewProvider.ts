@@ -583,7 +583,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
         if (parsedTools.length === 0) {
           // If the model attempted a tool call but output an empty/unclosed tag, automatically prompt it to invoke properly
-          if (turnAccumulated.includes('<tool_call') && loopCount < MAX_TOOL_TURNS) {
+          if (turnAccumulated.includes('<tool_call') && currentTurn < maxTurns) {
             fullMessages.push({
               role: 'user',
               content:
