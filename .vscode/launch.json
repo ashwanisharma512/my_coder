@@ -5,8 +5,12 @@
       "name": "Run My Coder Extension",
       "type": "extensionHost",
       "request": "launch",
+      "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
+        "C:\\Users\\ashwa\\Documents\\test"
+      ],
+      "runtimeArgs": [
         "--remote-debugging-port=9222"
       ],
       "outFiles": [

@@ -378,34 +378,48 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
   private parseToolCalls(text: string): Array<{ name: string; args: any; raw: string }> {
     const calls: Array<{ name: string; args: any; raw: string }> = [];
-    const regex = /<tool_call\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/tool_call>/gi;
+
+    // 1. Standard XML format: <tool_call name="xyz">{...}</tool_call>
+    const xmlRegex = /<tool_call\s+name=["']([^"']+)["']\s*>([\s\S]*?)<\/tool_call>/gi;
     let match: RegExpExecArray | null;
 
-    while ((match = regex.exec(text)) !== null) {
+    while ((match = xmlRegex.exec(text)) !== null) {
       const raw = match[0];
       const name = match[1];
-      let args = {};
-      const rawArgs = match[2].trim();
-      try {
-        args = JSON.parse(rawArgs);
-      } catch {
-        try {
-          // Normalize unescaped Windows backslashes
-          const escaped = rawArgs.replace(/\\(?![/"'bfnrtu])/g, '\\\\');
-          args = JSON.parse(escaped);
-        } catch {
-          try {
-            const cleaned = rawArgs.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
-            args = JSON.parse(cleaned);
-          } catch {
-            args = { input: rawArgs };
-          }
-        }
-      }
+      const args = this.parseJsonArgs(match[2].trim());
       calls.push({ name, args, raw });
     }
 
+    // 2. Natural language fallback: I invoked tool xyz with parameters: {...}
+    if (calls.length === 0) {
+      const nlRegex = /I invoked tool\s+([a-zA-Z0-9_]+)\s+with parameters:\s*(\{[\s\S]*?\})/gi;
+      while ((match = nlRegex.exec(text)) !== null) {
+        const raw = match[0];
+        const name = match[1];
+        const args = this.parseJsonArgs(match[2].trim());
+        calls.push({ name, args, raw });
+      }
+    }
+
     return calls;
+  }
+
+  private parseJsonArgs(rawArgs: string): any {
+    try {
+      return JSON.parse(rawArgs);
+    } catch {
+      try {
+        const escaped = rawArgs.replace(/\\(?![/"'bfnrtu])/g, '\\\\');
+        return JSON.parse(escaped);
+      } catch {
+        try {
+          const cleaned = rawArgs.replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ');
+          return JSON.parse(cleaned);
+        } catch {
+          return { input: rawArgs };
+        }
+      }
+    }
   }
 
   private async handleSendMessage(message: {
@@ -639,10 +653,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
               toolCall: toolEvent,
             });
 
-            // Feed tool result back into LLM conversation
+            // Feed tool result back into LLM conversation maintaining XML format
             fullMessages.push({
               role: 'assistant',
-              content: `I invoked tool ${call.name} with parameters: ${JSON.stringify(call.args)}`,
+              content: `<tool_call name="${call.name}">\n${JSON.stringify(call.args, null, 2)}\n</tool_call>`,
             });
 
             const resultText = toolResult.success
