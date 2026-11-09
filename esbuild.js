@@ -4,15 +4,20 @@ const isWatch = process.argv.includes("--watch");
 
 async function main() {
   const ctx = await esbuild.context({
-    entryPoints: ["src/extension.ts"],
+    entryPoints: {
+      "extension": "src/extension.ts",
+      "test/runTest": "src/test/runTest.ts",
+      "test/suite/index": "src/test/suite/index.ts",
+      "test/suite/extension.test": "src/test/suite/extension.test.ts"
+    },
     bundle: true,
     format: "cjs",
     minify: false,
     sourcemap: true,
     sourcesContent: false,
     platform: "node",
-    outfile: "dist/extension.js",
-    external: ["vscode"],
+    outdir: "dist",
+    external: ["vscode", "mocha", "@vscode/test-electron"],
     logLevel: "info",
   });
 

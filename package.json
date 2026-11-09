@@ -73,7 +73,9 @@
     "build": "npm run build:webview && npm run build:extension",
     "watch:extension": "node esbuild.js --watch",
     "watch:webview": "npm --prefix webview-ui run dev",
-    "compile": "tsc -p ./ --noEmit"
+    "compile": "tsc -p ./ --noEmit",
+    "test": "npm run build && node ./dist/test/runTest.js",
+    "test:headed": "npm run build && node ./dist/test/runTest.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",
@@ -81,9 +83,14 @@
     "openai": "^7.53.0"
   },
   "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/test-electron": "^3.1.0",
     "esbuild": "^0.25.0",
+    "glob": "^14.0.4",
+    "mocha": "^10.8.2",
     "typescript": "^5.4.5"
   }
 }

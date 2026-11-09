@@ -176,19 +176,19 @@ export class ToolRegistry {
     try {
       switch (toolName) {
         case 'read_file':
-          result = await this.executeReadFile(args);
+          result = await this.executeReadFile(args as any);
           break;
         case 'write_file':
-          result = await this.executeWriteFile(args);
+          result = await this.executeWriteFile(args as any);
           break;
         case 'edit_file':
-          result = await this.executeEditFile(args);
+          result = await this.executeEditFile(args as any);
           break;
         case 'list_files':
-          result = await this.executeListFiles(args);
+          result = await this.executeListFiles(args as any);
           break;
         case 'execute_command':
-          result = await this.executeCommand(args);
+          result = await this.executeCommand(args as any);
           break;
         default:
           result = {
