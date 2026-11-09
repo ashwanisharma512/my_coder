@@ -7,11 +7,10 @@ export class GroqProvider implements ILLMProvider {
 
   public listModels() {
     return [
-      { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile (Free)', contextWindow: '128k' },
-      { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (Free)', contextWindow: '128k' },
-      { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Free)', contextWindow: '128k' },
-      { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Free)', contextWindow: '128k' },
-      { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B (Free)', contextWindow: '128k' },
+      { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Tools, Reasoning)', contextWindow: '131k' },
+      { id: 'openai/gpt-oss-20b', name: 'GPT OSS 20B (Fast, Tools)', contextWindow: '131k' },
+      { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B (Tools, Reasoning)', contextWindow: '131k' },
+      { id: 'allam-2-7b', name: 'ALLaM 2 7B', contextWindow: '4k' },
     ];
   }
 
@@ -54,7 +53,7 @@ export class GroqProvider implements ILLMProvider {
 
       const stream = await client.chat.completions.create(
         {
-          model: model || 'llama-3.3-70b-versatile',
+          model: model || 'openai/gpt-oss-120b',
           messages: openaiMessages,
           stream: true,
           temperature: options?.temperature ?? 0.3,
